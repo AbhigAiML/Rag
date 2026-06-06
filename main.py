@@ -3,104 +3,109 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from dotenv import load_dotenv
 
-# Importing your existing modular framework components
-from src.vectorstore import FaissVectorStore
+# Importing your verified modular framework modules
 from src.search import RAGSearch
 
-# Thread-safe global storage container to hold our initialized RAG engines
-rag_app_context = {}
+# Load environmental configurations (.env)
+load_dotenv()
+
+# Safe, isolated state dictionary for caching singleton assets
+rag_application_state = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Lifespan context manager. Anything before 'yield' runs ONCE on server boot.
-    This prevents re-initializing FAISS and your LLM on every incoming request.
+    Lifespan context hook. Code before 'yield' runs once when the cloud instance boots.
+    This manages resources safely and prevents high-latency reads on incoming API streams.
     """
+    # Defensive programming check for Groq routing
+    if not os.getenv("GROQ_API_KEY"):
+        print("⚠️ WARNING: 'GROQ_API_KEY' is missing from the environment configuration!")
+
     try:
-        print("🔄 Initializing system memory and loading vector stores...")
+        print("🔄 Booting Application Context: Instantiating RAG Search Pipelines...")
         
-        # Initialize your FAISS store
-        store = FaissVectorStore("faiss_store")
-        store.load()
+        # This will either load your existing 'faiss_store' or build it automatically from scratch.
+        # Overriding the default model string to match a valid Groq production endpoint.
+        rag_instance = RAGSearch(llm_model="llama3-8b-8192")
         
-        # Initialize your main RAG execution instance
-        rag = RAGSearch()
+        # Cache inside our global context dictionary
+        rag_application_state["rag_engine"] = rag_instance
         
-        # Cache them securely in our global server context
-        rag_app_context["store"] = store
-        rag_app_context["rag_engine"] = rag
-        
-        print("🚀 Enterprise RAG Engine components loaded successfully into memory.")
+        print("🚀 Enterprise RAG Pipeline successfully locked into application memory.")
         yield
     finally:
-        # Code here runs when the server shuts down
-        rag_app_context.clear()
-        print("🛑 Server shutting down. RAG context flushed.")
+        # Code here executes when the application container shuts down safely
+        rag_application_state.clear()
+        print("🛑 Context cleared. Web service instances flushed.")
 
-# Instantiating the web application
+# Instantiating the core FastAPI server
 app = FastAPI(
-    title="Production RAG API Gateway",
-    description="Production-grade API layer serving predictions for our FAISS-backed RAG pipeline.",
+    title="Faiss-Backed Groq RAG System API",
+    description="Production-grade API wrapper for searching and summarizing localized data stores.",
     version="1.0.0",
     lifespan=lifespan
 )
 
-# Cross-Origin Resource Sharing (CORS) middleware configuration.
-# This allows any frontend interface or web link to communicate with your backend securely.
+# Cross-Origin Resource Sharing (CORS) setup.
+# This ensures public frontends, portfolio pages, or test suites can reach your endpoints.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- Pydantic Request/Response Schema Validation ---
+# --- Pydantic Data Structures for Strict Input/Output Schema Enforcement ---
 class QueryPayload(BaseModel):
-    query: str = Field(..., min_length=3, example="Mining quantitative association rules")
-    top_k: int = Field(default=3, description="Number of top documents to retrieve")
+    query: str = Field(..., min_length=2, example="What is attention mechanism?")
+    top_k: int = Field(default=3, description="Number of document chunks to extract from FAISS context matrix.")
 
-class SearchResponse(BaseModel):
+class QueryResponse(BaseModel):
     query: str
-    result: str
+    answer: str
 
-# --- API Operational Endpoints ---
+# --- Operational Endpoints ---
 @app.get("/", status_code=status.HTTP_200_OK)
-async def root():
-    """Root health check point to verify code status."""
+async def service_root():
+    """Simple status check node."""
     return {
         "status": "online",
-        "message": "RAG API Framework active. Navigate to /docs for the interactive Swagger dashboard."
+        "engine": "active",
+        "interactive_docs_url": "/docs"
     }
 
-@app.post("/api/v1/search", response_model=SearchResponse, status_code=status.HTTP_200_OK)
-async def query_rag_pipeline(payload: QueryPayload):
+@app.post("/api/v1/query", response_model=QueryResponse, status_code=status.HTTP_200_OK)
+async def stream_rag_pipeline(payload: QueryPayload):
     """
-    Accepts user query strings, performs document retrieval via FAISS, 
-    and synthesizes summaries via the embedded RAG pipeline engine.
+    Receives incoming queries, extracts matching metadata indices via FAISS, 
+    and passes context chunks down into Groq LLM pipelines for inference summary.
     """
-    # Defensive check ensuring the system booted up cleanly
-    if "rag_engine" not in rag_app_context:
+    # Safeguard validation checking whether initialization completed smoothly
+    if "rag_engine" not in rag_application_state:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="The underlying RAG engine is currently unavailable or initializing."
+            detail="RAG search orchestration pipeline is offline or re-indexing."
         )
         
     try:
-        rag: RAGSearch = rag_app_context["rag_engine"]
+        # Pull our cached singleton instance
+        rag: RAGSearch = rag_application_state["rag_engine"]
         
-        # Execute the traditional RAG query logic
-        summary_output = rag.search_and_summarize(payload.query, top_k=payload.top_k)
+        # Execute your existing search_and_summarize logic
+        generation_output = rag.search_and_summarize(query=payload.query, top_k=payload.top_k)
         
-        return SearchResponse(
+        return QueryResponse(
             query=payload.query,
-            result=str(summary_output)
+            answer=str(generation_output)
         )
         
     except Exception as e:
-        # Professional standard catch-all logging mechanism safely exposed as HTTP 500
+        # Wrap underlying engine errors inside clean internal server exception tracking
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Execution pipeline bottleneck failure: {str(e)}"
+            detail=f"Inference Engine Processing Bottleneck: {str(e)}"
         )
