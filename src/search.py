@@ -12,7 +12,7 @@ class RAGSearch:
         faiss_path = os.path.join(persist_dir, "faiss.index")
         meta_path = os.path.join(persist_dir, "metadata.pkl")
         if not (os.path.exists(faiss_path) and os.path.exists(meta_path)):
-            from src.data_loader import load_all_documents
+            from data_loader import load_all_documents
             docs = load_all_documents("data")
             self.vectorstore.build_from_documents(docs)
         else:
@@ -20,7 +20,7 @@ class RAGSearch:
         groq_api_key = os.getenv("GROQ_API_KEY")
         if not groq_api_key:
             raise RuntimeError("Set GROQ_API_KEY in your .env file before running RAGSearch.")
-        self.llm = ChatGroq(groq_api_key=groq_api_key, model_name=llm_model, temperature=0.3)
+        self.llm = ChatGroq(groq_api_key=groq_api_key, model_name=llm_model,temperature=0.3,max_retries=3)
         print(f"[INFO] Groq LLM initialized: {llm_model}")
 
     def search_and_summarize(self, query: str, top_k: int = 5) -> str:
