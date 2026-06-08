@@ -1,0 +1,26 @@
+name: Sync to Hugging Face Hub
+
+on:
+  push:
+    branches: [main]
+
+  # Allows you to manually trigger this sync from the Actions tab on GitHub
+  workflow_dispatch:
+
+jobs:
+  sync-to-hub:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Push to Hub
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          # Force push your GitHub codebase using your authorization token directly into the Space target
+          # Make sure to replace YOUR_HF_USERNAME and YOUR_SPACE_NAME with your exact account details below
+          git push --force https://AbhigAiML:$HF_TOKEN@huggingface.co/spaces/AbhigAiML/Enterprise-RAG-Explorer main
